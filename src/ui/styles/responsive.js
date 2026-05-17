@@ -26,22 +26,9 @@ export function getResponsiveStyles() {
         padding: 20px;
         margin-bottom: 25px;
         background: var(--restore-instructions-bg);
-        border-radius: 12px;
+        border-radius: var(--radius-md);
         border-left: 5px solid var(--restore-instructions-border);
         box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .restore-instructions::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -50%;
-        width: 100%;
-        height: 100%;
-        background: radial-gradient(circle, rgba(255, 152, 0, 0.05) 0%, transparent 70%);
-        pointer-events: none;
       }
 
       .restore-instructions p {
@@ -159,7 +146,6 @@ export function getResponsiveStyles() {
       .backup-select:hover {
         border-color: var(--backup-header-border);
         box-shadow: 0 4px 12px rgba(33, 150, 243, 0.15);
-        transform: translateY(-1px);
       }
 
       .backup-select:focus {
@@ -202,7 +188,7 @@ export function getResponsiveStyles() {
         color: var(--text-primary);
         margin-bottom: 15px;
         padding: 12px 16px;
-        background: linear-gradient(135deg, #e8f5e8 0%, #d4f1d4 100%);
+        background: var(--success-light);
         border-radius: 10px;
         border: 1px solid var(--success);
         box-shadow: 0 2px 4px rgba(76, 175, 80, 0.1);
@@ -284,7 +270,6 @@ export function getResponsiveStyles() {
 
       .backup-table tbody tr:hover {
         background: var(--table-row-hover);
-        transform: scale(1.01);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
 
@@ -585,16 +570,16 @@ export function getResponsiveStyles() {
       }
       
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 12px;
         justify-content: center;
         text-align: left;
       }
-      
+
       .content {
         text-align: center;
       }
-      
+
       .secret-header {
         flex-wrap: nowrap;
         align-items: center;
@@ -616,9 +601,9 @@ export function getResponsiveStyles() {
 
       /* 还原配置模态框优化 */
       #restoreModal .modal-content {
-        padding: 20px !important;
-        max-width: 88vw !important;
-        width: 88vw !important;
+        padding: 20px;
+        max-width: 88vw;
+        width: 88vw;
       }
 
       .restore-content {
@@ -668,9 +653,9 @@ export function getResponsiveStyles() {
         max-width: 750px;
       }
 
-      /* iPad 和平板两列卡片布局 */
+      /* iPad 和平板动态多列卡片布局 */
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 14px;
         justify-content: center;
         text-align: left;
@@ -719,7 +704,6 @@ export function getResponsiveStyles() {
 
       .backup-table tbody tr:hover {
         background: var(--table-row-hover) !important;
-        transform: scale(1.01) !important;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
       }
 
@@ -819,7 +803,7 @@ export function getResponsiveStyles() {
     @media (min-width: 1200px) {
       /* 还原配置模态框优化 */
       #restoreModal .modal-content {
-        max-width: 700px !important;
+        max-width: 700px;
       }
 
       .restore-content {
@@ -854,11 +838,11 @@ export function getResponsiveStyles() {
       }
 
       .container {
-        max-width: 900px;
+        max-width: 1400px;
       }
 
       .secrets-list {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
         justify-content: center;
         text-align: left;
@@ -938,7 +922,6 @@ export function getResponsiveStyles() {
 
       .backup-table tbody tr:hover {
         background: var(--table-row-hover) !important;
-        transform: scale(1.01) !important;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
       }
 
@@ -1062,6 +1045,7 @@ export function getResponsiveStyles() {
       backdrop-filter: blur(10px);
       border: 1px solid var(--toast-border);
       min-width: 200px;
+      max-width: min(90vw, 560px);
       text-align: center;
       font-size: 16px;
       font-weight: 500;
@@ -1074,7 +1058,10 @@ export function getResponsiveStyles() {
 
     .toast-message {
       flex: 1;
-      white-space: nowrap;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
     }
 
     /* 响应式设计 */
@@ -1109,9 +1096,9 @@ export function getResponsiveStyles() {
 
       /* 还原配置模态框优化 */
       #restoreModal .modal-content {
-        padding: 20px !important;
-        max-width: 92vw !important;
-        width: 92vw !important;
+        padding: 20px;
+        max-width: 92vw;
+        width: 92vw;
       }
 
       .restore-content {
@@ -1260,6 +1247,13 @@ export function getResponsiveStyles() {
       width: auto !important;
     }
 
+    /* P1.6 手机端 btn-compact 至少 44px 高，保证触控 */
+    @media (max-width: 768px) {
+      .btn-compact {
+        min-height: 44px !important;
+      }
+    }
+
     .scanner-hint {
       text-align: center;
       font-size: 11px;
@@ -1312,9 +1306,9 @@ export function getResponsiveStyles() {
       text-align: center;
       padding: 10px 16px;
       margin-bottom: 15px;
-      background: linear-gradient(135deg, var(--success-light) 0%, var(--info-light) 100%);
+      background: var(--success-light);
       border: 1px solid var(--success);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       font-weight: 600;
       color: var(--success-dark);
@@ -1337,17 +1331,12 @@ export function getResponsiveStyles() {
       position: relative;
       width: 360px;
       height: 360px;
-      border-radius: 20px;
+      border-radius: var(--radius-lg);
       overflow: hidden;
       box-shadow: var(--shadow-lg);
       background: #000;
       border: 3px solid var(--border-primary);
       transition: all 0.3s ease;
-    }
-
-    .video-wrapper:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--shadow-xl);
     }
 
     .video-wrapper video {
@@ -1375,11 +1364,10 @@ export function getResponsiveStyles() {
       width: 70%;
       height: 70%;
       border: 4px solid #4CAF50;
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
       box-shadow:
         0 0 30px rgba(76, 175, 80, 0.6),
         inset 0 0 30px rgba(76, 175, 80, 0.2);
-      animation: scannerPulse 2s ease-in-out infinite;
     }
 
     .scanner-frame::before,
@@ -1407,27 +1395,12 @@ export function getResponsiveStyles() {
       border-bottom-right-radius: 16px;
     }
 
-    @keyframes scannerPulse {
-      0%, 100% {
-        box-shadow:
-          0 0 30px rgba(76, 175, 80, 0.6),
-          inset 0 0 30px rgba(76, 175, 80, 0.2);
-        border-color: #4CAF50;
-      }
-      50% {
-        box-shadow:
-          0 0 50px rgba(76, 175, 80, 0.9),
-          inset 0 0 50px rgba(76, 175, 80, 0.3);
-        border-color: #66BB6A;
-      }
-    }
-
     .scanner-status {
       text-align: center;
       margin-bottom: 25px;
       padding: 12px 20px;
       background: var(--bg-secondary);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       color: var(--text-primary);
       font-size: 15px;
       font-weight: 500;
@@ -1443,24 +1416,12 @@ export function getResponsiveStyles() {
     .scanner-status::before {
       content: '📡';
       font-size: 20px;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      50% {
-        opacity: 0.7;
-        transform: scale(1.1);
-      }
     }
 
     .scanner-error {
       background: var(--danger-light);
       border: 1px solid var(--danger);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px;
       margin-bottom: 12px;
       text-align: center;
@@ -1495,7 +1456,7 @@ export function getResponsiveStyles() {
       padding: 14px 20px;
       font-size: 15px;
       font-weight: 600;
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1504,12 +1465,7 @@ export function getResponsiveStyles() {
     }
 
     .scanner-actions .btn:hover {
-      transform: translateY(-2px);
       box-shadow: var(--shadow-md);
-    }
-
-    .scanner-actions .btn:active {
-      transform: translateY(0);
     }
 
     /* 响应式设计 */

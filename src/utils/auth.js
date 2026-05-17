@@ -5,7 +5,7 @@
 
 import { createErrorResponse } from './response.js';
 import { checkRateLimit, createRateLimitResponse, getClientIdentifier, RATE_LIMIT_PRESETS } from './rateLimit.js';
-import { getSecurityHeaders } from './security.js';
+import { getAllowedOrigin, getSecurityHeaders } from './security.js';
 import { getLogger } from './logger.js';
 import {
 	ValidationError,
@@ -19,17 +19,52 @@ import {
 } from './errors.js';
 
 // JWT 配置
-const JWT_EXPIRY_DAYS = 30; // JWT 有效期：30天
+const JWT_EXPIRY_DAYS_DEFAULT = 30; // JWT 默认有效期：30天
 const JWT_ALGORITHM = 'HS256';
-const JWT_AUTO_REFRESH_THRESHOLD_DAYS = 7; // 剩余时间少于7天时自动续期
 
 // Cookie 配置
 const COOKIE_NAME = 'auth_token';
-const COOKIE_MAX_AGE = JWT_EXPIRY_DAYS * 24 * 60 * 60; // 30天（秒）
 
 // KV 存储键
 const KV_USER_PASSWORD_KEY = 'user_password';
 const KV_SETUP_COMPLETED_KEY = 'setup_completed';
+const KV_SETTINGS_KEY = 'settings';
+
+/**
+ * 获取 JWT 过期天数（从 KV settings 读取）
+ * @param {Object} env - 环境变量对象
+ * @returns {Promise<number>} JWT 过期天数
+ */
+async function getJwtExpiryDays(env) {
+	if (env && env.SECRETS_KV) {
+		try {
+			const raw = await env.SECRETS_KV.get(KV_SETTINGS_KEY);
+			if (raw) {
+				const settings = JSON.parse(raw);
+				if (settings.jwtExpiryDays) {
+					const days = Number(settings.jwtExpiryDays);
+					if (Number.isFinite(days) && days >= 1 && days <= 365) {
+						return days;
+					}
+				}
+			}
+		} catch {
+			// 解析失败，使用默认值
+		}
+	}
+	return JWT_EXPIRY_DAYS_DEFAULT;
+}
+
+/**
+ * 获取 JWT 自动续期阈值天数
+ * 默认为过期天数的 1/4，至少 1 天
+ * @param {Object} env - 环境变量对象
+ * @returns {Promise<number>} 自动续期阈值天数
+ */
+async function getJwtRefreshThresholdDays(env) {
+	const expiryDays = await getJwtExpiryDays(env);
+	return Math.max(1, Math.floor(expiryDays / 4));
+}
 
 // 密码配置
 const PASSWORD_MIN_LENGTH = 8;
@@ -40,7 +75,7 @@ const PBKDF2_ITERATIONS = 100000; // PBKDF2 迭代次数
  * @param {string} password - 密码
  * @returns {Object} { valid: boolean, message: string }
  */
-function validatePasswordStrength(password) {
+export function validatePasswordStrength(password) {
 	if (!password || password.length < PASSWORD_MIN_LENGTH) {
 		return {
 			valid: false,
@@ -76,7 +111,7 @@ function validatePasswordStrength(password) {
  * @returns {Promise<string>} 加密后的密码（格式：salt$hash）
  * @throws {ValidationError} 密码强度不符合要求时抛出错误
  */
-async function hashPassword(password) {
+export async function hashPassword(password) {
 	// 🔒 强制验证密码强度（防御性编程）
 	const validation = validatePasswordStrength(password);
 	if (!validation.valid) {
@@ -120,7 +155,7 @@ async function hashPassword(password) {
  * @param {Object} env - 环境变量对象（可选，用于日志）
  * @returns {Promise<boolean>} 是否匹配
  */
-async function verifyPassword(password, storedHash, env = null) {
+export async function verifyPassword(password, storedHash, env = null) {
 	try {
 		// 分离盐值和哈希值
 		const [saltB64, hashB64] = storedHash.split('$');
@@ -177,7 +212,7 @@ async function verifyPassword(password, storedHash, env = null) {
  * @param {number} expiryDays - 过期天数
  * @returns {Promise<string>} JWT token
  */
-async function generateJWT(payload, secret, expiryDays = JWT_EXPIRY_DAYS) {
+async function generateJWT(payload, secret, expiryDays = JWT_EXPIRY_DAYS_DEFAULT) {
 	const header = {
 		alg: JWT_ALGORITHM,
 		typ: 'JWT',
@@ -294,7 +329,7 @@ async function verifyJWT(token, secret, env = null) {
  * @param {number} maxAge - Cookie 最大有效期（秒）
  * @returns {string} Set-Cookie header 值
  */
-function createSetCookieHeader(token, maxAge = COOKIE_MAX_AGE) {
+function createSetCookieHeader(token, maxAge) {
 	const cookieAttributes = [
 		`${COOKIE_NAME}=${token}`,
 		`Max-Age=${maxAge}`,
@@ -305,6 +340,48 @@ function createSetCookieHeader(token, maxAge = COOKIE_MAX_AGE) {
 	];
 
 	return cookieAttributes.join('; ');
+}
+
+/**
+ * 创建清除认证 Cookie 的 Set-Cookie header 值
+ * @returns {string} Set-Cookie header 值
+ */
+function createClearCookieHeader() {
+	const cookieAttributes = [
+		`${COOKIE_NAME}=`,
+		'Max-Age=0',
+		'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+		'Path=/',
+		'HttpOnly',
+		'SameSite=Strict',
+		'Secure',
+	];
+
+	return cookieAttributes.join('; ');
+}
+
+/**
+ * 判断退出登录请求是否来自同源页面。
+ * 前端 fetch 会携带 X-Requested-With；跨站表单无法添加该头。
+ * @param {Request} request - HTTP 请求对象
+ * @returns {boolean} 是否允许处理退出登录
+ */
+function isLogoutRequestAllowed(request) {
+	if (request.headers.get('X-Requested-With') !== 'XMLHttpRequest') {
+		return false;
+	}
+
+	const origin = request.headers.get('Origin');
+	if (origin && getAllowedOrigin(request) !== origin) {
+		return false;
+	}
+
+	const fetchSite = request.headers.get('Sec-Fetch-Site');
+	if (fetchSite && !['same-origin', 'same-site', 'none'].includes(fetchSite)) {
+		return false;
+	}
+
+	return true;
 }
 
 /**
@@ -421,7 +498,7 @@ export async function verifyAuthWithDetails(request, env) {
 			const now = Math.floor(Date.now() / 1000);
 			const remainingSeconds = payload.exp - now;
 			const remainingDays = remainingSeconds / (24 * 60 * 60);
-			const needsRefresh = remainingDays < JWT_AUTO_REFRESH_THRESHOLD_DAYS;
+			const needsRefresh = remainingDays < (await getJwtRefreshThresholdDays(env));
 
 			logger.debug('JWT 验证成功（详细）', {
 				exp: new Date(payload.exp * 1000).toISOString(),
@@ -536,16 +613,17 @@ export async function handleFirstTimeSetup(request, env) {
 		});
 
 		// 生成 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const jwtToken = await generateJWT(
 			{
 				auth: true,
 				setupAt: new Date().toISOString(),
 			},
 			passwordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 
 		// 🍪 使用 HttpOnly Cookie 存储 JWT token
 		const securityHeaders = getSecurityHeaders(request);
@@ -555,14 +633,14 @@ export async function handleFirstTimeSetup(request, env) {
 				success: true,
 				message: '密码设置成功，已自动登录',
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
-					'Set-Cookie': createSetCookieHeader(jwtToken),
+					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
 					'X-RateLimit-Reset': rateLimitInfo.resetAt.toString(),
@@ -584,6 +662,17 @@ export async function handleFirstTimeSetup(request, env) {
 			},
 			error,
 		);
+
+		// 检测 KV 未绑定的情况
+		if (!env.SECRETS_KV) {
+			return createErrorResponse(
+				'设置失败',
+				'KV 存储未绑定，请在 Cloudflare Dashboard 或 wrangler.toml 中配置 SECRETS_KV 命名空间后重试',
+				500,
+				request,
+			);
+		}
+
 		return createErrorResponse('设置失败', '处理设置请求时发生错误', 500, request);
 	}
 }
@@ -645,16 +734,17 @@ export async function handleLogin(request, env) {
 		}
 
 		// 生成 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const jwtToken = await generateJWT(
 			{
 				auth: true,
 				loginAt: new Date().toISOString(),
 			},
 			storedPasswordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 		const securityHeaders = getSecurityHeaders(request);
 
 		return new Response(
@@ -663,14 +753,14 @@ export async function handleLogin(request, env) {
 				message: '登录成功',
 				token: jwtToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
 				headers: {
 					...securityHeaders,
 					'Content-Type': 'application/json',
-					'Set-Cookie': createSetCookieHeader(jwtToken),
+					'Set-Cookie': createSetCookieHeader(jwtToken, jwtExpiryDays * 24 * 60 * 60),
 					'X-RateLimit-Limit': rateLimitInfo.limit.toString(),
 					'X-RateLimit-Remaining': rateLimitInfo.remaining.toString(),
 					'X-RateLimit-Reset': rateLimitInfo.resetAt.toString(),
@@ -748,6 +838,7 @@ export async function handleRefreshToken(request, env) {
 		}
 
 		// 生成新的 JWT token
+		const jwtExpiryDays = await getJwtExpiryDays(env);
 		const newToken = await generateJWT(
 			{
 				auth: true,
@@ -755,10 +846,10 @@ export async function handleRefreshToken(request, env) {
 				refreshedAt: new Date().toISOString(),
 			},
 			storedPasswordHash,
-			JWT_EXPIRY_DAYS,
+			jwtExpiryDays,
 		);
 
-		const expiryDate = new Date(Date.now() + JWT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+		const expiryDate = new Date(Date.now() + jwtExpiryDays * 24 * 60 * 60 * 1000);
 
 		// 🍪 使用 HttpOnly Cookie 存储刷新后的 JWT token
 		// 🔒 使用安全头（CORS, CSP 等）
@@ -770,7 +861,7 @@ export async function handleRefreshToken(request, env) {
 				message: '令牌刷新成功',
 				token: newToken, // 同时在响应 body 中返回 token（供测试和客户端使用）
 				expiresAt: expiryDate.toISOString(),
-				expiresIn: `${JWT_EXPIRY_DAYS}天`,
+				expiresIn: `${jwtExpiryDays}天`,
 			}),
 			{
 				status: 200,
@@ -778,7 +869,7 @@ export async function handleRefreshToken(request, env) {
 					...securityHeaders, // 🔒 包含 CORS, CSP 等安全头
 					'Content-Type': 'application/json',
 					// 🍪 设置新的 HttpOnly Cookie
-					'Set-Cookie': createSetCookieHeader(newToken),
+					'Set-Cookie': createSetCookieHeader(newToken, jwtExpiryDays * 24 * 60 * 60),
 				},
 			},
 		);
@@ -807,6 +898,45 @@ export async function handleRefreshToken(request, env) {
 }
 
 /**
+ * 处理退出登录请求
+ * @param {Request} request - HTTP 请求对象
+ * @param {Object} env - 环境变量对象（用于限流）
+ * @returns {Response} 清除认证 Cookie 的响应
+ */
+export async function handleLogout(request, env) {
+	if (!isLogoutRequestAllowed(request)) {
+		return createErrorResponse('请求被拒绝', '退出登录请求必须来自同源页面', 403, request);
+	}
+
+	// 🛡️ Rate Limiting: 防止滥用登出端点制造日志噪音/CSRF 探测
+	// 使用 sensitive 预设（10 次/分钟）—— 正常用户登出频率远低于此
+	if (env && env.SECRETS_KV) {
+		const clientIP = getClientIdentifier(request, 'ip');
+		const rateLimitInfo = await checkRateLimit(clientIP, env, RATE_LIMIT_PRESETS.sensitive);
+
+		if (!rateLimitInfo.allowed) {
+			return createRateLimitResponse(rateLimitInfo, request);
+		}
+	}
+
+	return new Response(
+		JSON.stringify({
+			success: true,
+			message: '已退出登录',
+		}),
+		{
+			status: 200,
+			headers: {
+				...getSecurityHeaders(request),
+				'Content-Type': 'application/json',
+				'Cache-Control': 'no-store',
+				'Set-Cookie': createClearCookieHeader(),
+			},
+		},
+	);
+}
+
+/**
  * 检查路径是否需要认证
  * @param {string} pathname - 请求路径
  * @returns {boolean} 是否需要认证
@@ -816,6 +946,7 @@ export function requiresAuth(pathname) {
 	const publicPaths = [
 		'/', // 主页（会显示登录界面）
 		'/api/login', // 登录接口
+		'/api/logout', // 退出登录接口
 		'/api/refresh-token', // Token 刷新接口（已在内部验证）
 		'/api/setup', // 首次设置接口
 		'/setup', // 设置页面
@@ -825,6 +956,8 @@ export function requiresAuth(pathname) {
 		'/icon-512.png', // PWA 图标
 		'/favicon.ico', // 网站图标
 		'/otp', // OTP 生成页面（无参数）
+		'/api/onedrive/oauth/callback',
+		'/api/gdrive/oauth/callback',
 	];
 
 	// 精确匹配公开路径

@@ -16,10 +16,54 @@ vi.mock('../../src/api/secrets/index.js', () => ({
   handleDeleteSecret: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleGenerateOTP: vi.fn(async (secret, request) => new Response(JSON.stringify({ token: '123456' }), { status: 200 })),
   handleBatchAddSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleExportSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleBackupSecrets: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleGetBackups: vi.fn(async (request, env) => new Response(JSON.stringify({ backups: [] }), { status: 200 })),
   handleRestoreBackup: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
   handleExportBackup: vi.fn(async (request, env, key) => new Response(JSON.stringify({ data: {} }), { status: 200 }))
+}));
+
+// Mock WebDAV API handlers
+vi.mock('../../src/api/webdav.js', () => ({
+  handleGetWebDAVConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5 }), { status: 200 })),
+  handleSaveWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteWebDAVConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleTestWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 })),
+  handleToggleWebDAV: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '已启用' }), { status: 200 }))
+}));
+
+// Mock S3 API handlers
+vi.mock('../../src/api/s3.js', () => ({
+  handleGetS3Configs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5 }), { status: 200 })),
+  handleSaveS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteS3Config: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleTestS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '连接成功' }), { status: 200 })),
+  handleToggleS3: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '已启用' }), { status: 200 }))
+}));
+
+// Mock Change Password API handler
+vi.mock('../../src/api/password.js', () => ({
+  handleChangePassword: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: '密码修改成功' }), { status: 200 }))
+}));
+
+// Mock OneDrive API handlers
+vi.mock('../../src/api/onedrive.js', () => ({
+  handleGetOneDriveConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5, oauthConfigured: true }), { status: 200 })),
+  handleSaveOneDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteOneDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleToggleOneDrive: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: 'enabled' }), { status: 200 })),
+  handleStartOneDriveOAuth: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, authorizeUrl: 'https://login.microsoftonline.com/' }), { status: 200 })),
+  handleOneDriveOAuthCallback: vi.fn(async (request, env) => new Response('<html>OneDrive OAuth</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
+}));
+
+// Mock Google Drive API handlers
+vi.mock('../../src/api/gdrive.js', () => ({
+  handleGetGoogleDriveConfigs: vi.fn(async (request, env) => new Response(JSON.stringify({ destinations: [], count: 0, maxAllowed: 5, oauthConfigured: true }), { status: 200 })),
+  handleSaveGoogleDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleDeleteGoogleDriveConfig: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 })),
+  handleToggleGoogleDrive: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, message: 'enabled' }), { status: 200 })),
+  handleStartGoogleDriveOAuth: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, authorizeUrl: 'https://accounts.google.com/' }), { status: 200 })),
+  handleGoogleDriveOAuthCallback: vi.fn(async (request, env) => new Response('<html>Google Drive OAuth</html>', { status: 200, headers: { 'Content-Type': 'text/html' } }))
 }));
 
 // Mock UI generators
@@ -46,13 +90,14 @@ vi.mock('../../src/utils/auth.js', () => ({
   verifyAuthWithDetails: vi.fn(async (request, env) => ({ valid: true, token: 'test-token' })),
   requiresAuth: vi.fn((pathname) => {
     // Public routes
-    const publicPaths = ['/', '/api/login', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png'];
+    const publicPaths = ['/', '/api/login', '/api/logout', '/api/refresh-token', '/api/setup', '/setup', '/manifest.json', '/sw.js', '/icon-192.png', '/icon-512.png', '/api/onedrive/oauth/callback', '/api/gdrive/oauth/callback'];
     if (publicPaths.includes(pathname)) return false;
     if (pathname.startsWith('/otp')) return false;
     return true;
   }),
   createUnauthorizedResponse: vi.fn((message, request) => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })),
   handleLogin: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, token: 'test-token' }), { status: 200 })),
+  handleLogout: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Set-Cookie': 'auth_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict; Secure' } })),
   handleRefreshToken: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true, token: 'new-token' }), { status: 200 })),
   checkIfSetupRequired: vi.fn(async (env) => false),
   handleFirstTimeSetup: vi.fn(async (request, env) => new Response(JSON.stringify({ success: true }), { status: 200 }))
@@ -377,6 +422,22 @@ describe('Router Handler', () => {
       expect(handleRefreshToken).toHaveBeenCalledWith(request, env);
       expect(response.status).toBe(200);
     });
+
+    it('应该处理退出登录请求', async () => {
+      const { handleLogout } = await import('../../src/utils/auth.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/logout'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleLogout).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0');
+    });
   });
 
   describe('handleRequest - API 路由分发', () => {
@@ -404,7 +465,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleAddSecret).toHaveBeenCalledWith(request, env);
+      expect(handleAddSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(201);
     });
 
@@ -434,7 +495,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleBatchAddSecrets).toHaveBeenCalledWith(request, env);
+      expect(handleBatchAddSecrets).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -462,7 +523,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleUpdateSecret).toHaveBeenCalledWith(request, env);
+      expect(handleUpdateSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -477,7 +538,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleDeleteSecret).toHaveBeenCalledWith(request, env);
+      expect(handleDeleteSecret).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -518,7 +579,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleBackupSecrets).toHaveBeenCalledWith(request, env);
+      expect(handleBackupSecrets).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -530,7 +591,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleGetBackups).toHaveBeenCalledWith(request, env);
+      expect(handleGetBackups).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -558,7 +619,7 @@ describe('Router Handler', () => {
 
       const response = await handleRequest(request, env);
 
-      expect(handleRestoreBackup).toHaveBeenCalledWith(request, env);
+      expect(handleRestoreBackup).toHaveBeenCalledWith(request, env, undefined);
       expect(response.status).toBe(200);
     });
 
@@ -566,6 +627,119 @@ describe('Router Handler', () => {
       const request = createMockRequest({
         method: 'GET',
         pathname: '/api/backup/restore'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    // WebDAV 配置 API 路由测试
+    it('应该处理 GET /api/webdav/config', async () => {
+      const { handleGetWebDAVConfigs } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({ pathname: '/api/webdav/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetWebDAVConfigs).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该处理 POST /api/webdav/config', async () => {
+      const { handleSaveWebDAVConfig } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/webdav/config',
+        body: { url: 'https://dav.example.com', username: 'user', password: 'pass', path: '/' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleSaveWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该处理 DELETE /api/webdav/config', async () => {
+      const { handleDeleteWebDAVConfig } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'DELETE',
+        pathname: '/api/webdav/config'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleDeleteWebDAVConfig).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/webdav/config 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'PATCH',
+        pathname: '/api/webdav/config'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    it('应该处理 POST /api/webdav/test', async () => {
+      const { handleTestWebDAV } = await import('../../src/api/webdav.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/webdav/test',
+        body: { url: 'https://dav.example.com', username: 'user', password: 'pass', path: '/' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleTestWebDAV).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/webdav/test 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'GET',
+        pathname: '/api/webdav/test'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(response.status).toBe(405);
+    });
+
+    // 修改密码 API 路由测试
+    it('应该处理 POST /api/change-password', async () => {
+      const { handleChangePassword } = await import('../../src/api/password.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/change-password',
+        body: { currentPassword: 'OldPass123!', newPassword: 'NewPass456@', confirmPassword: 'NewPass456@' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleChangePassword).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('应该拒绝 /api/change-password 的不支持方法', async () => {
+      const request = createMockRequest({
+        method: 'GET',
+        pathname: '/api/change-password'
       });
       const env = createMockEnv();
 
@@ -611,6 +785,90 @@ describe('Router Handler', () => {
       expect(body.error).toContain('API未找到');
     });
   });
+
+    it('should handle GET /api/onedrive/config', async () => {
+      const { handleGetOneDriveConfigs } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({ pathname: '/api/onedrive/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetOneDriveConfigs).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle POST /api/onedrive/oauth/start', async () => {
+      const { handleStartOneDriveOAuth } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/onedrive/oauth/start',
+        body: { id: 'onedrive-1' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleStartOneDriveOAuth).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/onedrive/oauth/callback', async () => {
+      const { handleOneDriveOAuthCallback } = await import('../../src/api/onedrive.js');
+
+      const request = createMockRequest({
+        pathname: '/api/onedrive/oauth/callback?code=test&state=state-1'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleOneDriveOAuthCallback).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/gdrive/config', async () => {
+      const { handleGetGoogleDriveConfigs } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({ pathname: '/api/gdrive/config' });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGetGoogleDriveConfigs).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle POST /api/gdrive/oauth/start', async () => {
+      const { handleStartGoogleDriveOAuth } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({
+        method: 'POST',
+        pathname: '/api/gdrive/oauth/start',
+        body: { id: 'gdrive-1' }
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleStartGoogleDriveOAuth).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
+
+    it('should handle GET /api/gdrive/oauth/callback', async () => {
+      const { handleGoogleDriveOAuthCallback } = await import('../../src/api/gdrive.js');
+
+      const request = createMockRequest({
+        pathname: '/api/gdrive/oauth/callback?code=test&state=state-1'
+      });
+      const env = createMockEnv();
+
+      const response = await handleRequest(request, env);
+
+      expect(handleGoogleDriveOAuthCallback).toHaveBeenCalledWith(request, env);
+      expect(response.status).toBe(200);
+    });
 
   describe('handleRequest - OTP 生成路由', () => {
     it('应该处理 /otp（无 secret）', async () => {

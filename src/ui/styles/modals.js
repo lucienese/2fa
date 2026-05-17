@@ -24,7 +24,7 @@ export function getModalStyles() {
     .modal-content {
       background: var(--modal-bg);
       border: 1px solid var(--modal-border);
-      border-radius: 20px;
+      border-radius: var(--radius-lg);
       padding: 30px;
       max-width: 600px;
       width: 100%;
@@ -40,6 +40,22 @@ export function getModalStyles() {
       scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
     }
 
+    /* FAB 链路弹窗统一宽度 */
+    .fab-modal .modal-content,
+    .modal-content.fab-modal-content {
+      max-width: var(--fab-modal-max-width, 600px);
+    }
+
+    .fab-modal-sm .modal-content,
+    .modal-content.fab-modal-sm-content {
+      max-width: var(--fab-modal-sm-max-width, 450px);
+    }
+
+    .fab-modal-lg .modal-content,
+    .modal-content.fab-modal-lg-content {
+      max-width: var(--fab-modal-lg-max-width, 680px);
+    }
+
     /* 模态框滚动条样式 */
     .modal-content::-webkit-scrollbar {
       width: 8px;
@@ -47,12 +63,12 @@ export function getModalStyles() {
 
     .modal-content::-webkit-scrollbar-track {
       background: var(--scrollbar-track);
-      border-radius: 20px;
+      border-radius: var(--radius-lg);
     }
 
     .modal-content::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       border: 2px solid transparent;
       background-clip: content-box;
     }
@@ -65,6 +81,29 @@ export function getModalStyles() {
     .modal.show .modal-content {
       transform: scale(1);
       opacity: 1;
+    }
+
+    .modal.drag-over .modal-content {
+      border: 2px dashed var(--primary);
+      background: var(--modal-bg);
+      box-shadow: inset 0 0 30px rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+    }
+
+    .modal.drag-over::after {
+      content: '松开鼠标识别二维码';
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--primary);
+      color: white;
+      padding: 16px 32px;
+      border-radius: var(--radius-md);
+      font-size: 16px;
+      font-weight: 600;
+      z-index: 999999;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
     }
 
     .modal-header {
@@ -126,10 +165,17 @@ export function getModalStyles() {
       justify-content: center;
     }
 
+    /* P1.6 手机端 close 按钮触控面积提升到 44px */
+    @media (max-width: 768px) {
+      .close-btn {
+        width: 44px;
+        height: 44px;
+      }
+    }
+
     .close-btn:hover {
       color: var(--danger-dark);
       background: var(--danger-light);
-      transform: scale(1.1);
     }
 
     .form-group {
@@ -148,7 +194,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 14px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       transition: all 0.3s ease;
       background: var(--input-bg);
@@ -166,7 +212,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 14px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       font-size: 16px;
       background: var(--input-bg-focus);
       color: var(--input-text);
@@ -184,7 +230,7 @@ export function getModalStyles() {
     .form-section {
       margin: 25px 0;
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       background: var(--bg-secondary);
       box-shadow: var(--shadow-sm);
@@ -193,7 +239,6 @@ export function getModalStyles() {
 
     .form-section:hover {
       border-color: var(--border-focus);
-      box-shadow: var(--shadow-md);
     }
 
     .section-header {
@@ -266,7 +311,7 @@ export function getModalStyles() {
       font-size: 14px;
       padding: 12px 16px;
       border: 2px solid var(--input-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       background: var(--input-bg-focus);
       color: var(--input-text);
       transition: all 0.3s ease;
@@ -291,7 +336,7 @@ export function getModalStyles() {
       color: var(--text-secondary);
       background: var(--info-light);
       padding: 14px 16px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border-left: 4px solid var(--border-focus);
       margin-top: 15px;
       line-height: 1.5;
@@ -322,7 +367,7 @@ export function getModalStyles() {
     @media (max-width: 480px) {
       .form-section {
         margin: 20px 0;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .form-group-small select,
@@ -349,7 +394,7 @@ export function getModalStyles() {
     .btn {
       padding: 14px 24px;
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 15px;
       font-weight: 500;
       cursor: pointer;
@@ -379,6 +424,242 @@ export function getModalStyles() {
       background: var(--btn-secondary-hover);
     }
 
+    .btn-danger {
+      background: #dc2626;
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+
+    /* ========== 扫码 Modal 溢出修复 ========== */
+    /* 让底部的“选择图片/粘贴截图/连续扫描”在 modal 滚动时始终可见 */
+    #qrScanModal .modal-content {
+      position: relative;
+      max-height: 90vh;
+    }
+
+    #qrScanModal .scanner-section {
+      padding-bottom: 0;
+    }
+
+    #qrScanModal .scanner-container {
+      margin-bottom: 12px;
+    }
+
+    #qrScanModal .scanner-bottom-actions {
+      position: sticky;
+      bottom: 0;
+      background: var(--modal-bg);
+      border-top: 1px solid var(--border-primary);
+      padding: 12px 4px;
+      margin: 0;
+      z-index: 2;
+    }
+
+    #qrScanModal .scanner-hint {
+      position: sticky;
+      bottom: 60px;
+      background: var(--modal-bg);
+      z-index: 1;
+      margin-bottom: 0;
+      padding: 4px 0;
+    }
+
+    /* 矮屏（常见笔记本 900×600 窗口化）缩小摄像头预览避免滚动 */
+    @media (max-height: 820px) {
+      #qrScanModal .video-wrapper {
+        width: 280px !important;
+        height: 280px !important;
+      }
+    }
+
+    @media (max-height: 680px) {
+      #qrScanModal .video-wrapper {
+        width: 220px !important;
+        height: 220px !important;
+      }
+      #qrScanModal .scanner-container {
+        margin-bottom: 8px;
+      }
+    }
+
+    /* 自定义确认对话框 */
+    .confirm-dialog-modal {
+      z-index: 100010;
+    }
+
+    .confirm-dialog-content {
+      padding: 24px;
+      max-width: 420px;
+    }
+
+    .confirm-dialog-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .confirm-dialog-icon {
+      font-size: 24px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .confirm-dialog-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .confirm-dialog-message {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      word-break: break-word;
+    }
+
+    .confirm-dialog-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .confirm-dialog-actions .btn {
+      min-width: 96px;
+      padding: 10px 20px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 480px) {
+      .confirm-dialog-content {
+        padding: 20px;
+      }
+      .confirm-dialog-actions {
+        flex-direction: column-reverse;
+      }
+      .confirm-dialog-actions .btn {
+        width: 100%;
+      }
+    }
+
+    /* 登录模态框 */
+    .login-modal {
+      z-index: 100001;
+    }
+
+    .login-modal-content {
+      max-width: 400px;
+    }
+
+    .login-modal-title {
+      text-align: center;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .login-modal-description {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .login-modal-hint {
+      color: var(--text-tertiary);
+      font-size: 12px;
+    }
+
+    .form-group .login-modal-hint {
+      display: block;
+      margin-top: 5px;
+    }
+
+    .login-password-wrapper {
+      position: relative;
+    }
+
+    .login-password-wrapper input {
+      padding-right: 56px;
+    }
+
+    .login-password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      transform: translateY(-50%);
+      border: none;
+      background: transparent;
+      color: var(--text-tertiary);
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      transition: color 0.2s ease, background-color 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-password-toggle:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .login-password-toggle:focus-visible {
+      outline: 2px solid var(--input-border-focus);
+      outline-offset: 2px;
+    }
+
+    .login-password-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    .login-password-icon-hide {
+      display: none;
+    }
+
+    .login-password-toggle.is-visible .login-password-icon-show {
+      display: none;
+    }
+
+    .login-password-toggle.is-visible .login-password-icon-hide {
+      display: block;
+    }
+
+    .login-modal-actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .login-modal-error {
+      display: none;
+      margin-top: 15px;
+      padding: 10px;
+      background: var(--danger-light);
+      border-radius: var(--radius-sm);
+      color: var(--danger-dark);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .login-modal-cancel-btn,
+    .login-modal-submit-btn {
+      flex: 1;
+      padding: 14px 28px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
     .empty-state {
       text-align: center;
       padding: 40px 20px;
@@ -399,7 +680,7 @@ export function getModalStyles() {
     /* 导入模态框样式 */
     .import-instructions {
       background: var(--import-instructions-bg);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 20px;
       margin-bottom: 25px;
       border: 1px solid var(--import-instructions-border);
@@ -420,7 +701,7 @@ export function getModalStyles() {
     .import-method {
       background: var(--import-method-bg);
       border: 1px solid var(--import-method-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px 15px;
       margin-bottom: 10px;
       font-size: 14px;
@@ -436,35 +717,16 @@ export function getModalStyles() {
     .file-import-section {
       background: var(--import-file-bg);
       border: 2px dashed var(--import-file-border);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       padding: 25px;
       text-align: center;
       margin-bottom: 25px;
       transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .file-import-section::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(45deg, transparent 30%, rgba(23, 162, 184, 0.05) 50%, transparent 70%);
-      transform: translateX(-100%);
-      transition: transform 0.6s ease;
-    }
-
-    .file-import-section:hover::before {
-      transform: translateX(100%);
     }
 
     .file-import-section:hover {
       border-color: var(--info-dark);
       background: var(--import-file-bg);
-      transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
 
@@ -478,7 +740,7 @@ export function getModalStyles() {
     .import-example {
       background: var(--import-example-bg);
       border: 1px solid var(--import-example-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px;
       font-size: 13px;
       margin-top: 12px;
@@ -488,7 +750,7 @@ export function getModalStyles() {
     .import-example code {
       background: var(--card-bg);
       padding: 4px 6px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
       word-break: break-all;
       display: block;
@@ -500,7 +762,7 @@ export function getModalStyles() {
     /* 实用工具模态框样式 */
     .tools-list {
       background: var(--tool-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       overflow: hidden;
       margin-top: 20px;
     }
@@ -520,12 +782,10 @@ export function getModalStyles() {
 
     .tool-item:hover {
       background-color: var(--tool-hover-bg);
-      transform: translateX(5px);
     }
 
     .tool-item:active {
       background-color: var(--bg-active);
-      transform: translateX(2px);
     }
 
     .tool-icon {
@@ -538,7 +798,7 @@ export function getModalStyles() {
       justify-content: center;
       flex-shrink: 0;
       background: var(--tool-icon-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       border: 1px solid var(--tool-icon-border);
     }
 
@@ -569,11 +829,11 @@ export function getModalStyles() {
     .import-file-btn {
       font-size: 15px;
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
     }
 
     .import-textarea {
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border: 2px solid var(--input-border);
       font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
       font-size: 13px;
@@ -599,13 +859,13 @@ export function getModalStyles() {
 
     .import-form-actions .btn {
       padding: 12px 20px;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
     }
 
     .import-preview {
       background: var(--import-instructions-bg);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 20px;
       margin: 20px 0;
       border: 1px solid var(--import-instructions-border);
@@ -624,12 +884,12 @@ export function getModalStyles() {
 
     .import-preview::-webkit-scrollbar-track {
       background: var(--scrollbar-track);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
     }
 
     .import-preview::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       border: 2px solid transparent;
       background-clip: content-box;
     }
@@ -657,7 +917,7 @@ export function getModalStyles() {
     .import-preview-item {
       background: var(--card-bg);
       border: 1px solid var(--border-secondary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 12px 15px;
       margin-bottom: 10px;
       font-size: 14px;
@@ -666,7 +926,6 @@ export function getModalStyles() {
     }
 
     .import-preview-item:hover {
-      transform: translateY(-1px);
       box-shadow: var(--shadow-md);
     }
 
@@ -718,7 +977,7 @@ export function getModalStyles() {
       width: 100%;
       padding: 12px;
       border: 2px solid var(--input-border);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       font-family: monospace;
       resize: vertical;
@@ -736,7 +995,7 @@ export function getModalStyles() {
 
     .qr-code-container {
       background: var(--bg-secondary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       padding: 30px;
       margin: 20px 0;
       border: 1px solid var(--border-primary);
@@ -753,7 +1012,7 @@ export function getModalStyles() {
       height: auto;
       margin: 0 auto;
       display: block;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       box-shadow: var(--shadow-sm);
     }
 
@@ -762,7 +1021,7 @@ export function getModalStyles() {
       height: 200px;
       margin: 0 auto;
       display: block;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border-secondary);
       background: var(--card-bg);
       padding: 10px;
@@ -770,7 +1029,7 @@ export function getModalStyles() {
 
     .qr-info {
       background: var(--info-light);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       padding: 15px;
       margin: 20px 0;
       font-size: 14px;
@@ -808,7 +1067,7 @@ export function getModalStyles() {
         margin-bottom: 20px;
         padding: 12px;
         background: var(--bg-secondary);
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--border-primary);
       }
 
@@ -944,7 +1203,7 @@ export function getModalStyles() {
         padding-right: 36px;
         font-size: 13px;
         border: 1px solid var(--table-border);
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         background: var(--backup-select-bg);
         background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
         background-repeat: no-repeat;
@@ -1054,7 +1313,7 @@ export function getModalStyles() {
 
     /* ==================== 导出格式选择 - 紧凑网格布局 ==================== */
     .export-modal-compact {
-      max-width: 520px;
+      max-width: var(--fab-modal-max-width, 600px);
     }
 
     .export-summary {
@@ -1063,7 +1322,7 @@ export function getModalStyles() {
       align-items: center;
       padding: 12px 16px;
       background: var(--bg-secondary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       margin-bottom: 20px;
       gap: 12px;
     }
@@ -1132,7 +1391,7 @@ export function getModalStyles() {
       padding: 14px 8px;
       background: var(--bg-primary);
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       transition: all 0.2s ease;
       min-height: 72px;
@@ -1141,12 +1400,10 @@ export function getModalStyles() {
     .format-card:hover {
       border-color: var(--success);
       background: var(--bg-hover);
-      transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
 
     .format-card:active {
-      transform: translateY(0);
       box-shadow: var(--shadow-sm);
     }
 
@@ -1176,14 +1433,14 @@ export function getModalStyles() {
       margin-top: 4px;
       padding: 2px 6px;
       background: var(--success-light, rgba(76, 175, 80, 0.1));
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       white-space: nowrap;
     }
 
     .format-details {
       margin: 16px 0;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
     }
 
@@ -1260,7 +1517,7 @@ export function getModalStyles() {
       .format-card {
         padding: 12px 6px;
         min-height: 68px;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .format-icon {
@@ -1292,9 +1549,23 @@ export function getModalStyles() {
       }
     }
 
+    /* P1.5 导出格式网格：平板 3 列 / 481-767 手机大屏 2 列（481-767 的 2 列与 ≤480 同规则重复但不冲突） */
+    @media (min-width: 768px) and (max-width: 1279px) {
+      .format-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 767px) {
+      .format-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+    }
+
     /* ==================== 导入模态框 - 紧凑优化布局 ==================== */
     .import-modal-compact {
-      max-width: 520px;
+      max-width: var(--fab-modal-max-width, 600px);
     }
 
     /* ==================== 智能输入区样式 ==================== */
@@ -1307,7 +1578,7 @@ export function getModalStyles() {
       min-height: 140px;
       padding: 14px 16px;
       border: 2px dashed var(--import-file-border);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       background: var(--import-file-bg);
       color: var(--text-primary);
       font-size: 14px;
@@ -1366,7 +1637,7 @@ export function getModalStyles() {
       padding: 10px 18px;
       font-size: 14px;
       font-weight: 500;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
     }
 
     .import-file-hint {
@@ -1384,7 +1655,7 @@ export function getModalStyles() {
       padding: 10px 14px;
       background: var(--success-light);
       border: 1px solid var(--success);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       margin-bottom: 12px;
       font-size: 13px;
     }
@@ -1415,7 +1686,7 @@ export function getModalStyles() {
       color: var(--text-tertiary);
       cursor: pointer;
       padding: 4px 8px;
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       font-size: 14px;
       transition: all 0.2s;
       flex-shrink: 0;
@@ -1460,7 +1731,7 @@ export function getModalStyles() {
     .import-format-details {
       margin: 8px 0;
       border: 1px solid var(--border-primary);
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       overflow: hidden;
     }
 
@@ -1518,7 +1789,7 @@ export function getModalStyles() {
     /* 紧凑预览区 */
     .import-preview-compact {
       background: var(--bg-secondary);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       padding: 14px;
       margin: 16px 0;
       border: 1px solid var(--border-primary);
@@ -1593,6 +1864,69 @@ export function getModalStyles() {
       border-radius: 3px;
     }
 
+    .import-progress-panel {
+      background: var(--bg-secondary);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin: 12px 0 16px;
+      border: 1px solid var(--border-primary);
+    }
+
+    .import-progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .import-progress-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .import-progress-percent {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--btn-primary-bg);
+    }
+
+    .import-progress-bar {
+      width: 100%;
+      height: 10px;
+      background: var(--progress-bg);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .import-progress-fill {
+      height: 100%;
+      background: var(--progress-fill);
+      border-radius: inherit;
+      transition: width 0.25s ease;
+    }
+
+    .import-progress-meta,
+    .import-progress-stats {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+
+    .import-progress-meta {
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .import-progress-stats {
+      color: var(--text-tertiary);
+    }
+
     /* 导入响应式 - 手机端 */
     @media (max-width: 480px) {
       .import-modal-compact {
@@ -1604,7 +1938,7 @@ export function getModalStyles() {
         min-height: 120px;
         padding: 12px 14px;
         font-size: 13px;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
       }
 
       .import-file-btn-wrapper {
@@ -1689,7 +2023,7 @@ export function getModalStyles() {
 
     /* 二级格式选择模态框 */
     .sub-format-modal {
-      max-width: 450px;
+      max-width: var(--fab-modal-sm-max-width, 450px);
     }
 
     .sub-format-list {
@@ -1706,7 +2040,7 @@ export function getModalStyles() {
       padding: 16px;
       background: var(--bg-primary);
       border: 2px solid var(--border-primary);
-      border-radius: 12px;
+      border-radius: var(--radius-md);
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -1714,7 +2048,6 @@ export function getModalStyles() {
     .sub-format-option:hover {
       border-color: var(--accent-color);
       background: var(--bg-hover);
-      transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
@@ -1755,7 +2088,7 @@ export function getModalStyles() {
     /* 二级格式选择 - 移动端适配 */
     @media (max-width: 480px) {
       .sub-format-modal {
-        max-width: 95vw;
+        max-width: 100%;
       }
 
       .sub-format-option {
@@ -1766,6 +2099,436 @@ export function getModalStyles() {
 
       .sub-format-icon {
         font-size: 40px;
+      }
+    }
+
+    /* ==================== 设置模态框样式 ==================== */
+
+    .settings-modal-content {
+      max-width: var(--fab-modal-lg-max-width, 680px);
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .settings-modal-content .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-primary);
+      margin-bottom: 0;
+    }
+
+    .settings-layout {
+      display: flex;
+      min-height: 400px;
+      max-height: calc(85vh - 70px);
+    }
+
+    .settings-tabs {
+      flex-shrink: 0;
+      width: 160px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-primary);
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .settings-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 14px;
+      transition: all 0.2s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .settings-tab:hover {
+      background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+      color: var(--text-primary);
+    }
+
+    .settings-tab.active {
+      background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+      color: var(--accent-color, #2196F3);
+      border-left-color: var(--accent-color, #2196F3);
+      font-weight: 600;
+    }
+
+    .settings-tab-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .settings-tab-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+
+    .settings-panel {
+      display: none;
+    }
+
+    .settings-panel.active {
+      display: block;
+    }
+
+    .settings-section {
+      margin-bottom: 20px;
+    }
+
+    .settings-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .settings-section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0 0 12px 0;
+    }
+
+    .settings-desc {
+      font-size: 13px;
+      color: var(--text-tertiary);
+      margin: 0 0 12px 0;
+      line-height: 1.5;
+    }
+
+    .settings-divider {
+      height: 1px;
+      background: var(--border-primary);
+      margin: 20px 0;
+    }
+
+    .settings-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .settings-field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .settings-field input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-sm);
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s ease;
+    }
+
+    .settings-field input:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .change-password-result {
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .change-password-result.error {
+      background: rgba(244, 67, 54, 0.1);
+      color: #f44336;
+      border: 1px solid rgba(244, 67, 54, 0.2);
+    }
+
+    .change-password-result.success {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+      border: 1px solid rgba(76, 175, 80, 0.2);
+    }
+
+    /* 同步设置卡片 */
+    .sync-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .sync-card:hover {
+      border-color: var(--accent-color, #2196F3);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .sync-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sync-card-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sync-card-icon {
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+
+    .sync-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sync-card-desc {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+
+    .sync-status {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: var(--radius-md);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .sync-status.configured {
+      background: rgba(76, 175, 80, 0.1);
+      color: #4caf50;
+    }
+
+    .sync-status.not-configured {
+      background: rgba(158, 158, 158, 0.1);
+      color: var(--text-tertiary);
+    }
+
+    .settings-info-box {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-tertiary);
+      background: var(--bg-secondary);
+      line-height: 1.6;
+    }
+
+    /* 主题选项 */
+    .theme-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .theme-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .theme-option:hover {
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .theme-option input[type="radio"] {
+      accent-color: var(--accent-color, #2196F3);
+    }
+
+    .theme-option-label {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    /* 设置下拉选择框 */
+    .settings-select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-sm);
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      appearance: auto;
+    }
+
+    .settings-select:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .settings-inline-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .settings-inline-group .settings-input {
+      width: 80px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-sm);
+      background: var(--input-bg, var(--bg-secondary));
+      color: var(--text-primary);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .settings-inline-group .settings-input:focus {
+      outline: none;
+      border-color: var(--accent-color, #2196F3);
+    }
+
+    .settings-unit {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .settings-result {
+      font-size: 13px;
+      margin: 8px 0 0 0;
+      line-height: 1.5;
+    }
+
+    .settings-result.success {
+      color: var(--success-color, #4CAF50);
+    }
+
+    .settings-result.error {
+      color: var(--error-color, #f44336);
+    }
+
+    /* ========== P1.1 手机端 Bottom Sheet ========== */
+    /* Modal 从屏幕底部滑入，贴底全宽展示（排除 confirm-dialog 等小对话框） */
+    @media (max-width: 640px) {
+      .modal:not(.confirm-dialog-modal) {
+        align-items: flex-end;
+        padding: 0;
+      }
+
+      .modal:not(.confirm-dialog-modal) .modal-content {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 90vh;
+        margin: 0;
+        /* 覆盖桌面的 scale 动画，改为 slideUp */
+        transform: translateY(100%);
+        opacity: 0;
+        transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease;
+      }
+
+      .modal:not(.confirm-dialog-modal).show .modal-content {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      /* 贴边 header / actions：长表单中始终可见 */
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content > .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--modal-bg);
+      }
+
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content form > .form-actions,
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content > .form-actions,
+      .modal:not(.confirm-dialog-modal):not(#qrScanModal) .modal-content .import-form-actions {
+        position: sticky;
+        bottom: 0;
+        background: var(--modal-bg);
+        z-index: 10;
+      }
+    }
+
+    /* 设置模态框移动端适配 */
+    @media (max-width: 600px) {
+      .settings-layout {
+        flex-direction: column;
+        min-height: auto;
+        max-height: calc(85vh - 70px);
+      }
+
+      .settings-tabs {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-primary);
+        display: flex;
+        padding: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-shrink: 0;
+      }
+
+      .settings-tab {
+        flex: 1;
+        flex-direction: row;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px 8px;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        font-size: 13px;
+        min-width: 0;
+      }
+
+      .settings-tab.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--accent-color, #2196F3);
+      }
+
+      /* P1.4 手机端 Tab 保留图标+文字同行（旧版仅显示图标太抽象） */
+      .settings-tab-text {
+        display: inline;
+        white-space: nowrap;
+      }
+
+      .settings-tab-icon {
+        font-size: 16px;
+      }
+
+      .settings-content {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .settings-modal-content {
+        max-width: 100%;
+        max-height: 90vh;
+      }
+    }
+
+    /* 超窄屏（<360px）Tab 回退为仅图标，避免横向滚动 */
+    @media (max-width: 359px) {
+      .settings-tab-text {
+        display: none;
+      }
+      .settings-tab-icon {
+        font-size: 20px;
       }
     }
   `;

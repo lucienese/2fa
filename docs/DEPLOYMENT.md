@@ -93,6 +93,9 @@
 
 ✅ **完成标志**：重新部署成功，没有错误提示
 
+> 说明：如果后续改为使用 Git 自动构建，Cloudflare 会直接读取仓库中的 `wrangler.toml` 进行部署。当前项目配置已显式声明 `SECRETS_KV`，Wrangler 会在首次部署时自动创建所需 KV，并在后续部署中继续复用当前 Worker 已绑定的资源。
+> 如果你在 Cloudflare Dashboard 中手动填写 Git 构建命令，**部署命令请使用 `npm run deploy`，不要直接写 `npx wrangler deploy`**，这样会保留项目里的版本注入流程，并和仓库默认部署入口保持一致。
+
 ---
 
 ### 第 4 步：（强烈推荐）配置加密密钥
@@ -646,6 +649,28 @@ Current Version ID: 63b40cd3-91de-421b-bd97-f556cc27fa83
 
 **Q4: 如何更新到最新版本？**
 
+如果你是 **一键部署** 用户，统一使用 GitHub 仓库中的 **Sync Upstream** 工作流原地升级。无论有没有设置 `ENCRYPTION_KEY`，都是同一套流程：
+
+一键部署创建的仓库不包含 `.github/workflows/` 目录。如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后再按下面步骤升级。
+
+1. 打开一键部署生成的 GitHub 仓库
+2. 进入 **Actions** → **Sync Upstream**
+3. 点击 **Run workflow**
+4. 等待工作流提交最新代码
+5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
+6. Cloudflare 会自动重新部署同一个 Worker
+
+这种方式不会删除原 Worker、KV 绑定或 Secrets，已经配置好的 `ENCRYPTION_KEY` 会继续生效；没有配置 `ENCRYPTION_KEY` 的用户也照样用这套流程升级。
+
+⚠️ **重要**：
+
+- `ENCRYPTION_KEY` 是解密已有数据的主密钥，请在首次创建时保存到密码管理器
+- Cloudflare Secret 保存后不会再次显示原值
+- 正常升级不要删除 Worker、GitHub 仓库或 KV 命名空间
+- 如果 Cloudflare 没有自动部署，就在当前 Worker 的 **Deployments** 页面重新部署最新提交，而不是删除后重装
+
+如果你是 **本地 clone + wrangler deploy** 用户，按下面命令升级：
+
 ```bash
 # 1. 在项目文件夹中打开命令行
 cd path/to/2fa
@@ -855,13 +880,20 @@ Strong!Password123
 
 ## 环境配置
 
-### 环境变量（Secrets）
+### 环境变量（Variables / Secrets）
 
-| 变量名           | 必需 | 说明                              | 生成方法                                                                      |
-| ---------------- | ---- | --------------------------------- | ----------------------------------------------------------------------------- |
-| `ENCRYPTION_KEY` | 推荐 | AES-GCM 256位加密密钥             | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `LOG_LEVEL`      | ❌   | 日志级别（DEBUG/INFO/WARN/ERROR） | 默认 `INFO`                                                                   |
-| `SENTRY_DSN`     | ❌   | Sentry 错误追踪 DSN               | 从 Sentry 获取                                                                |
+| 变量名                       | 必需 | 说明                                             | 生成方法 / 来源                                                               |
+| ---------------------------- | ---- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `ENCRYPTION_KEY`             | 推荐 | AES-GCM 256位加密密钥                            | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `ONEDRIVE_CLIENT_ID`         | 按需 | OneDrive OAuth 客户端 ID                         | Microsoft Entra 应用注册                                                      |
+| `ONEDRIVE_CLIENT_SECRET`     | 按需 | OneDrive OAuth 客户端密钥                        | Microsoft Entra 应用注册                                                      |
+| `GOOGLE_DRIVE_CLIENT_ID`     | 按需 | Google Drive OAuth 客户端 ID                     | Google Cloud Console                                                          |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | 按需 | Google Drive OAuth 客户端密钥                    | Google Cloud Console                                                          |
+| `OAUTH_REDIRECT_BASE_URL`    | 按需 | OAuth 回调基准地址；使用自定义域名时推荐显式配置 | 例如 `https://2fa.example.com`                                                |
+| `LOG_LEVEL`                  | ❌   | 日志级别（DEBUG/INFO/WARN/ERROR）                | 默认 `INFO`                                                                   |
+| `SENTRY_DSN`                 | ❌   | Sentry 错误追踪 DSN                              | 从 Sentry 获取                                                                |
+
+如果你准备启用 OneDrive / Google Drive 远程备份，配置完上表中的 OAuth 变量后，再按 [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) 完成平台回调地址和授权步骤。
 
 ⚠️ **认证说明**：
 
@@ -884,7 +916,7 @@ crons = ["0 16 * * *"]  # 每天北京时间凌晨0点（UTC 16:00）
 
 **备份机制**：
 
-- ✅ **事件驱动**: 数据变化后 5 分钟自动备份
+- ✅ **事件驱动**: 数据变化后立即触发自动备份；有请求上下文时会转入后台执行
 - ✅ **定时检查**: 每天凌晨检查数据变化
 - ✅ **智能备份**: 使用 SHA-256 哈希检测变化
 - ✅ **自动清理**: 保留最新 100 个备份
@@ -1285,7 +1317,34 @@ npx wrangler kv:key delete "user_password" --namespace-id=your-kv-id
 
 ## 升级指南
 
-### 从旧版本升级
+### 一键部署升级（推荐）
+
+适用于通过 Deploy 按钮创建 GitHub 仓库并连接 Cloudflare 的用户。
+
+一键部署创建的仓库不包含 `.github/workflows/` 目录。如果你的仓库里还没有 **Actions → Sync Upstream**，先在自己的仓库中新增文件 `.github/workflows/sync-upstream.yml`，内容复制自上游仓库文件：<https://github.com/wuzf/2fa/blob/main/.github/workflows/sync-upstream.yml>，并提交一次；之后就都按下面步骤升级。
+
+1. 打开自己的 GitHub 仓库
+2. 进入 **Actions** → **Sync Upstream**
+3. 点击 **Run workflow**
+4. 等待工作流提交最新代码
+5. 工作流会自动以最新上游配置为基础，合并你当前仓库里的 Worker 名称、KV 绑定和常见部署配置
+6. 等待 Cloudflare 自动重新部署同一个 Worker
+
+**优点**：
+
+- 不需要删除 Worker
+- 不需要删除 GitHub 仓库
+- 不需要重新绑定 KV
+- 不需要重新填写 `ENCRYPTION_KEY`
+- 不区分是否设置了 `ENCRYPTION_KEY`
+
+**注意**：
+
+- 工作流会优先保留当前仓库中的部署配置，自动合并 Worker 名称、KV ID、路由和常见现有设置
+- GitHub Actions 摘要里的 `wrangler.toml` diff 主要用于审计合并结果；只有在你维护了非常特殊的 `wrangler.toml` 配置时，才需要人工再检查
+- 如果你改过项目源码，而不只是用默认一键部署，请先自行评估差异
+
+### 本地克隆升级
 
 ```bash
 # 1. 备份当前数据
@@ -1377,6 +1436,7 @@ npx wrangler secret delete SENTRY_DSN
 
 - [架构文档](ARCHITECTURE.md) - 了解系统设计
 - [API 参考](API_REFERENCE.md) - API 端点文档
+- [网盘备份配置指南](CLOUD_DRIVE_SETUP.md) - OneDrive / Google Drive OAuth 配置步骤
 - [功能文档](features/) - 各功能详解
 - [PWA 指南](PWA_GUIDE.md) - PWA 安装和配置
 

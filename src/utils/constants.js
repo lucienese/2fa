@@ -34,7 +34,6 @@ export const KV_KEYS = {
 
 export const LIMITS = {
 	// Backup configuration
-	MAX_BACKUPS: 100, // Maximum number of backups to keep
 	BACKUP_DEBOUNCE_MS: 5 * 60 * 1000, // 5 minutes - debounce interval for backup triggers
 
 	// Secret limits
@@ -42,6 +41,10 @@ export const LIMITS = {
 	MAX_SECRET_NAME_LENGTH: 100, // Maximum length for secret name
 	MAX_ACCOUNT_LENGTH: 100, // Maximum length for account name
 	MAX_ISSUER_LENGTH: 100, // Maximum length for issuer
+
+	// 批量导入分片：前端切片、后端单请求上限、"中间片才跳过备份"三处共用同一个值。
+	// 修改时需同步前端 import/core.js 与 googleMigration.js 的注入，以及 validation/batch 的校验。
+	BULK_IMPORT_CHUNK_SIZE: 100,
 
 	// OTP configuration
 	OTP_PERIOD_DEFAULT: 30, // Default TOTP period in seconds
@@ -106,9 +109,9 @@ export const RATE_LIMITS = {
 // =============================================================================
 
 export const SECURITY = {
-	// JWT configuration
-	JWT_EXPIRY_DAYS: 30, // JWT token expiration in days
-	JWT_REFRESH_DAYS: 7, // Refresh token if less than this many days remaining
+	// JWT configuration (defaults, can be overridden via settings UI)
+	JWT_EXPIRY_DAYS_DEFAULT: 30, // JWT token default expiration in days
+	JWT_REFRESH_RATIO: 0.25, // Refresh when remaining time < 25% of expiry
 
 	// Password requirements
 	PASSWORD_MIN_LENGTH: 8,
@@ -127,7 +130,7 @@ export const SECURITY = {
 
 	// Cookie configuration
 	COOKIE_NAME: 'auth_token',
-	COOKIE_MAX_AGE: 30 * 24 * 60 * 60, // 30 days in seconds
+	COOKIE_MAX_AGE: 30 * 24 * 60 * 60, // Default 30 days in seconds (actual value computed from jwtExpiryDays setting at runtime)
 };
 
 // =============================================================================

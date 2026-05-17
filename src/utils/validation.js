@@ -4,6 +4,7 @@
  */
 
 import { createErrorResponse } from './response.js';
+import { LIMITS } from './constants.js';
 
 // ==================== 验证中间件系统 ====================
 
@@ -236,11 +237,26 @@ export const batchImportSchema = new Schema({
 			if (v.length === 0) {
 				return '密钥数组不能为空';
 			}
-			if (v.length > 100) {
-				return `批量导入数量过多（${v.length}个），单次最多支持100个`;
+			if (v.length > LIMITS.BULK_IMPORT_CHUNK_SIZE) {
+				return `批量导入数量过多（${v.length}个），单次最多支持${LIMITS.BULK_IMPORT_CHUNK_SIZE}个`;
 			}
 			return true;
 		},
+	},
+	immediateBackup: {
+		required: false,
+		type: 'boolean',
+		default: true,
+	},
+	chunkIndex: {
+		required: false,
+		type: 'number',
+		validator: (v) => (Number.isInteger(v) && v >= 1) || 'chunkIndex 必须是大于等于 1 的整数',
+	},
+	chunkCount: {
+		required: false,
+		type: 'number',
+		validator: (v) => (Number.isInteger(v) && v >= 1) || 'chunkCount 必须是大于等于 1 的整数',
 	},
 });
 
@@ -253,8 +269,8 @@ export const restoreBackupSchema = new Schema({
 		type: 'string',
 		message: '备份键不能为空',
 		validator: (v) => {
-			if (!v.startsWith('backup_') || !v.endsWith('.json')) {
-				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS.json';
+			if (!/^backup_\d{4}-\d{2}-\d{2}(?:_[\w-]+)?\.(?:json|txt|csv|html)$/.test(v)) {
+				return '备份文件名格式不正确，应为 backup_YYYY-MM-DD_HH-MM-SS-mmm-xxxx.(json|txt|csv|html)';
 			}
 			return true;
 		},
@@ -264,6 +280,157 @@ export const restoreBackupSchema = new Schema({
 		type: 'boolean',
 		default: false,
 	},
+});
+
+/**
+ * WebDAV 配置验证规则
+ */
+export const webdavConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
+	url: {
+		required: true,
+		type: 'string',
+		message: 'WebDAV URL 不能为空',
+		validator: (v) => {
+			try {
+				const u = new URL(v);
+				return u.protocol === 'https:' || 'URL 必须使用 HTTPS';
+			} catch {
+				return 'URL 格式无效';
+			}
+		},
+		transform: (v) => v.replace(/\/+$/, ''),
+	},
+	username: { required: true, type: 'string', message: '用户名不能为空' },
+	password: { required: false, type: 'string', default: '' },
+	path: {
+		required: false,
+		type: 'string',
+		default: '/',
+		transform: (v) => {
+			const p = v.trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			return p.startsWith('/') ? p || '/' : '/' + p;
+		},
+	},
+});
+
+/**
+ * S3 配置验证规则
+ */
+export const s3ConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
+	endpoint: {
+		required: true,
+		type: 'string',
+		message: 'Endpoint 不能为空',
+		validator: (v) => {
+			try {
+				const u = new URL(v);
+				return u.protocol === 'https:' || 'URL 必须使用 HTTPS';
+			} catch {
+				return 'URL 格式无效';
+			}
+		},
+		transform: (v) => v.replace(/\/+$/, ''),
+	},
+	bucket: { required: true, type: 'string', message: 'Bucket 不能为空' },
+	region: { required: false, type: 'string', default: 'auto' },
+	accessKeyId: { required: true, type: 'string', message: 'Access Key ID 不能为空' },
+	secretAccessKey: { required: false, type: 'string', default: '' },
+	prefix: {
+		required: false,
+		type: 'string',
+		default: '',
+		transform: (v) => {
+			if (!v || !v.trim()) {
+				return '';
+			}
+			const p = v.trim().replace(/\/+/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+			return p ? p + '/' : '';
+		},
+	},
+});
+
+/**
+ * OAuth 网盘配置验证规则
+ */
+export const cloudDriveConfigSchema = new Schema({
+	id: { required: false, type: 'string' },
+	name: {
+		required: true,
+		type: 'string',
+		message: '目标名称不能为空',
+		transform: (v) => v.trim(),
+		validator: (v) => {
+			if (v.trim().length > 30) {
+				return `目标名称过长，最多支持30个字符（当前：${v.trim().length}）`;
+			}
+			return true;
+		},
+	},
+	folderPath: {
+		required: false,
+		type: 'string',
+		default: '/2FA-Backups',
+		transform: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			return normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+		},
+		validator: (v) => {
+			const normalized = (v || '/2FA-Backups').trim().replace(/\/+/g, '/').replace(/\/+$/, '');
+			const finalPath = normalized.startsWith('/') ? normalized || '/' : '/' + normalized;
+
+			if (finalPath.length > 200) {
+				return '备份目录过长，最多支持 200 个字符';
+			}
+
+			const segments = finalPath.split('/').filter(Boolean);
+			if (segments.some((segment) => segment === '.' || segment === '..')) {
+				return '备份目录不能包含 "." 或 ".."';
+			}
+
+			return true;
+		},
+	},
+});
+
+/**
+ * 仅包含目标 ID 的验证规则
+ */
+export const destinationIdSchema = new Schema({
+	id: { required: true, type: 'string', message: '目标 ID 不能为空' },
+});
+
+/**
+ * 目标启用/禁用切换验证规则
+ */
+export const toggleDestinationSchema = new Schema({
+	id: { required: true, type: 'string', message: '目标 ID 不能为空' },
+	enabled: { required: true, type: 'boolean', message: '启用状态不能为空' },
 });
 
 // ==================== 原有验证函数 ====================
@@ -445,11 +612,6 @@ export function createSecretObject(
 		algorithm: algorithm.toUpperCase(),
 		counter: normalizedType === 'HOTP' ? parseInt(counter) : undefined,
 	};
-
-	// 如果是新建密钥，添加创建时间
-	if (!existingId) {
-		secretObject.createdAt = new Date().toISOString();
-	}
 
 	return secretObject;
 }

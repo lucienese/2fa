@@ -15,10 +15,19 @@
 
 import { handleRequest, handleCORS } from './router/handler.js';
 import { decryptSecrets } from './utils/encryption.js';
-import { encryptData } from './utils/encryption.js';
 import { getLogger, createRequestLogger, PerformanceTimer } from './utils/logger.js';
 import { getMonitoring, ErrorSeverity } from './utils/monitoring.js';
 import { KV_KEYS } from './utils/constants.js';
+import { pushToAllWebDAV } from './utils/webdav.js';
+import { pushToAllS3 } from './utils/s3.js';
+import { pushToAllOneDrive } from './utils/onedrive.js';
+import { pushToAllGoogleDrive } from './utils/gdrive.js';
+import { deleteBackupRecord, listAllBackupKeys, putBackupRecord } from './utils/backup-index.js';
+import { resolveConfiguredBackupFormat, sanitizeMaxBackups } from './utils/backup.js';
+import { createBackupEntry, isValidBackupKey, parseBackupTimeFromKey } from './utils/backup-format.js';
+import { generateDataHash, getPendingDataHash, isPendingDataHashFresh, saveDataHash } from './utils/data-hash.js';
+
+export { generateDataHash, saveDataHash } from './utils/data-hash.js';
 
 /**
  * 获取所有密钥
@@ -54,65 +63,6 @@ async function getAllSecrets(env) {
 		logger.error('获取密钥列表失败', {}, error);
 		return [];
 	}
-}
-
-/**
- * 生成数据的哈希值，用于检测数据变化
- * 使用 SHA-256 算法，避免哈希碰撞
- * @param {Array} secrets - 密钥数组
- * @param {Object} env - 环境变量对象（可选，用于日志）
- * @returns {Promise<string>} 数据的 SHA-256 哈希值（十六进制）
- */
-export async function generateDataHash(secrets, env = null) {
-	const logger = env ? getLogger(env) : null;
-
-	// 创建一个包含关键字段的简化版本，用于计算哈希
-	const hashData = secrets.map((secret) => ({
-		id: secret.id,
-		name: secret.name,
-		secret: secret.secret,
-		account: secret.account,
-		type: secret.type,
-		digits: secret.digits,
-		period: secret.period,
-		algorithm: secret.algorithm,
-		counter: secret.counter,
-	}));
-
-	// 按ID排序确保一致性
-	hashData.sort((a, b) => (a.id || '').localeCompare(b.id || ''));
-
-	// 生成 JSON 字符串
-	const dataString = JSON.stringify(hashData);
-
-	// 调试：输出前3个密钥的关键信息用于哈希计算
-	if (hashData.length > 0 && logger) {
-		const sampleData = hashData.slice(0, 3).map((item) => ({
-			name: item.name,
-			account: item.account || '',
-			type: item.type,
-			secretLength: item.secret?.length || 0,
-		}));
-		logger.debug('哈希计算数据样本', { sampleData });
-	}
-
-	// 使用 Web Crypto API 的 SHA-256 计算哈希
-	const encoder = new TextEncoder();
-	const data = encoder.encode(dataString);
-	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-
-	// 转换为十六进制字符串
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-
-	if (logger) {
-		logger.debug('SHA-256 哈希生成', {
-			hashPreview: hashHex.substring(0, 16) + '...',
-			secretCount: secrets.length,
-		});
-	}
-
-	return hashHex;
 }
 
 /**
@@ -159,23 +109,23 @@ async function _hasDataChanged(env, currentSecrets) {
 			// 获取最新备份的密钥数量进行比较
 			try {
 				const list = await env.SECRETS_KV.list();
-				const backupKeys = list.keys.filter((key) => key.name.startsWith('backup_'));
+				const backupKeys = list.keys.filter((key) => isValidBackupKey(key.name));
 				if (backupKeys.length > 0) {
 					backupKeys.sort((a, b) => b.name.localeCompare(a.name));
-					const latestBackupKey = backupKeys[0].name;
-					const latestBackup = await env.SECRETS_KV.get(latestBackupKey, 'json');
+					const latestBackup = backupKeys[0];
+					const latestBackupCount = Number.parseInt(latestBackup.metadata?.count, 10);
 
-					if (latestBackup && latestBackup.count !== currentSecrets.length) {
+					if (Number.isInteger(latestBackupCount) && latestBackupCount !== currentSecrets.length) {
 						logger.info('密钥数量发生变化', {
 							currentCount: currentSecrets.length,
-							lastBackupCount: latestBackup.count,
-							difference: currentSecrets.length - latestBackup.count,
+							lastBackupCount: latestBackupCount,
+							difference: currentSecrets.length - latestBackupCount,
 						});
 						return true;
-					} else if (latestBackup) {
+					} else if (Number.isInteger(latestBackupCount)) {
 						logger.debug('密钥数量未变化', {
 							currentCount: currentSecrets.length,
-							lastBackupCount: latestBackup.count,
+							lastBackupCount: latestBackupCount,
 						});
 					}
 				}
@@ -200,44 +150,43 @@ async function _hasDataChanged(env, currentSecrets) {
 }
 
 /**
- * 保存当前数据的哈希值
- * @param {Object} env - 环境变量对象
- * @param {Array} secrets - 密钥数据
- */
-export async function saveDataHash(env, secrets) {
-	const logger = getLogger(env);
-
-	try {
-		const hash = await generateDataHash(secrets, env);
-		await env.SECRETS_KV.put('last_backup_hash', hash);
-		logger.info('数据哈希值已保存', {
-			hashPreview: hash.substring(0, 16) + '...',
-			secretCount: secrets.length,
-		});
-	} catch (error) {
-		logger.error('保存数据哈希值失败', {}, error);
-	}
-}
-
-/**
- * 清理旧备份文件（保留最新100个备份）
+ * 清理旧备份文件（根据用户设置保留备份数量，默认100个）
  * @param {Object} env - 环境变量对象
  */
 async function cleanupOldBackups(env) {
 	const logger = getLogger(env);
 
+	// 读取用户配置的 maxBackups
+	let maxBackups = 100;
 	try {
-		const list = await env.SECRETS_KV.list();
-		const backupKeys = list.keys.filter((key) => key.name.startsWith('backup_'));
+		const raw = await env.SECRETS_KV.get('settings');
+		if (raw) {
+			const settings = JSON.parse(raw);
+			if (settings.maxBackups !== undefined) {
+				maxBackups = sanitizeMaxBackups(settings.maxBackups);
+			}
+		}
+	} catch {
+		// 读取失败使用默认值
+	}
+
+	// 0 表示不限制
+	if (maxBackups === 0) {
+		logger.debug('备份数量不限制（maxBackups=0），跳过清理');
+		return;
+	}
+
+	try {
+		const backupKeys = (await listAllBackupKeys(env)).sort((a, b) => b.name.localeCompare(a.name));
 
 		logger.info('检查备份文件', {
 			totalBackups: backupKeys.length,
 		});
 
-		if (backupKeys.length <= 100) {
+		if (backupKeys.length <= maxBackups) {
 			logger.debug('备份文件数量正常', {
 				current: backupKeys.length,
-				max: 100,
+				max: maxBackups,
 			});
 			return;
 		}
@@ -245,9 +194,9 @@ async function cleanupOldBackups(env) {
 		// 按文件名排序（文件名包含日期，最新的在前）
 		backupKeys.sort((a, b) => b.name.localeCompare(a.name));
 
-		// 保留最新的100个备份，删除其余的
-		const keysToKeep = backupKeys.slice(0, 100);
-		const keysToDelete = backupKeys.slice(100);
+		// 保留最新的备份，删除其余的
+		const keysToKeep = backupKeys.slice(0, maxBackups);
+		const keysToDelete = backupKeys.slice(maxBackups);
 
 		logger.info('开始清理旧备份', {
 			toKeep: keysToKeep.length,
@@ -255,7 +204,16 @@ async function cleanupOldBackups(env) {
 		});
 
 		for (const key of keysToDelete) {
-			await env.SECRETS_KV.delete(key.name);
+			const deleteResult = await deleteBackupRecord(env, key.name, key.metadata);
+			if (!deleteResult?.success) {
+				logger.warn('删除旧备份失败', {
+					backupKey: key.name,
+					deletedBackup: deleteResult?.deletedBackup === true,
+					deletedIndex: deleteResult?.deletedIndex === true,
+				});
+				continue;
+			}
+
 			logger.debug('删除旧备份', {
 				backupKey: key.name,
 			});
@@ -270,6 +228,33 @@ async function cleanupOldBackups(env) {
 	}
 }
 
+async function hasCommittedBackupSince(env, updatedAt) {
+	if (typeof updatedAt !== 'string' || !updatedAt) {
+		return false;
+	}
+
+	const updatedAtMs = Date.parse(updatedAt);
+	if (!Number.isFinite(updatedAtMs)) {
+		return false;
+	}
+
+	try {
+		const backupKeys = await listAllBackupKeys(env);
+		if (backupKeys.length === 0) {
+			return false;
+		}
+
+		const latestBackup = backupKeys[backupKeys.length - 1];
+		const skippedInvalidCount = Number.parseInt(latestBackup.metadata?.skippedInvalidCount, 10) || 0;
+		const latestBackupCreatedAt = latestBackup.metadata?.created || parseBackupTimeFromKey(latestBackup.name);
+		const latestBackupCreatedAtMs = Date.parse(latestBackupCreatedAt);
+		return Number.isFinite(latestBackupCreatedAtMs) && latestBackupCreatedAtMs >= updatedAtMs && skippedInvalidCount === 0;
+	} catch (error) {
+		getLogger(env).warn('检查待完成备份是否已落盘失败', { errorMessage: error.message }, error);
+		return false;
+	}
+}
+
 /**
  * Cloudflare Worker 主入口点
  * @param {Request} request - HTTP请求对象
@@ -278,7 +263,7 @@ async function cleanupOldBackups(env) {
  * @returns {Response} HTTP响应
  */
 export default {
-	async fetch(request, env, _ctx) {
+	async fetch(request, env, ctx) {
 		// 初始化日志和监控
 		const logger = getLogger(env);
 		const requestLogger = createRequestLogger(logger);
@@ -313,7 +298,7 @@ export default {
 			}
 
 			// 处理实际请求
-			const response = await handleRequest(request, env);
+			const response = await handleRequest(request, env, ctx);
 
 			// 记录响应
 			requestLogger.logResponse(timer, response);
@@ -380,9 +365,13 @@ export default {
 	 * @param {Object} env - 环境变量对象
 	 * @param {Object} ctx - 执行上下文
 	 */
-	async scheduled(event, env, _ctx) {
+	async scheduled(event, env, ctx) {
 		const logger = getLogger(env);
 		const timer = new PerformanceTimer('ScheduledBackup', logger);
+
+		// 早于任何 KV 读取捕获时间戳：此时刻之前 stage 的 pending hash 必然对应"不晚于我们即将备份的数据"，
+		// 传给 saveDataHash 以便清理分片导入等场景下残留的 pending。
+		const backupStartedAt = Date.now();
 
 		try {
 			logger.info('定时备份任务开始', {
@@ -418,83 +407,104 @@ export default {
 			timer.checkpoint('检测开始');
 
 			const currentHash = await generateDataHash(secrets, env);
-			const lastHash = await env.SECRETS_KV.get('last_backup_hash');
+			const [lastHash, pendingHashEntry] = await Promise.all([env.SECRETS_KV.get('last_backup_hash'), getPendingDataHash(env)]);
+			const hasFreshPendingHash = isPendingDataHashFresh(pendingHashEntry) && pendingHashEntry.hash === currentHash;
+			const pendingHashHasCommittedBackup = hasFreshPendingHash ? await hasCommittedBackupSince(env, pendingHashEntry.updatedAt) : false;
 
 			logger.info('详细数据变化检测', {
 				currentHashPreview: currentHash.substring(0, 16) + '...',
 				lastHashPreview: lastHash ? lastHash.substring(0, 16) + '...' : 'null',
+				pendingHashPreview: pendingHashEntry?.hash ? pendingHashEntry.hash.substring(0, 16) + '...' : 'null',
+				pendingHashHasCommittedBackup,
 				secretCount: secrets.length,
 			});
+
+			const dataChangedState = !lastHash || currentHash !== lastHash;
 
 			// 如果哈希值不存在或不匹配，强制执行备份
 			const dataChanged = !lastHash || currentHash !== lastHash;
 			logger.info('数据变化检测结果', {
-				changed: dataChanged,
+				changed: dataChangedState,
 				reason: !lastHash ? '首次备份' : dataChanged ? '数据已变化' : '数据未变化',
 			});
 
-			if (!dataChanged) {
+			if (!dataChanged || pendingHashHasCommittedBackup) {
 				logger.info('数据未变化，跳过备份', {
-					tip: '如果修改了密钥但未触发备份，请检查 saveDataHash 调用',
+					tip: pendingHashHasCommittedBackup
+						? '检测到已有同一批数据的备份记录，跳过本次定时补偿'
+						: '如果修改了密钥但未触发备份，请检查 saveDataHash 调用',
 				});
 				timer.end({ skipped: true });
 				return;
 			}
 
+			if (hasFreshPendingHash) {
+				logger.info('发现待完成备份哈希，但尚未确认已有备份落盘，继续执行定时备份兜底');
+			}
+
 			logger.info('检测到数据变化，开始创建备份');
 			timer.checkpoint('开始备份');
+			const backupFormat = await resolveConfiguredBackupFormat(env, logger);
+			const backupEntry = await createBackupEntry(secrets, env, {
+				format: backupFormat,
+				reason: 'scheduled',
+				strict: false,
+			});
+			const { backupKey, backupContent, encrypted: isEncrypted, format: storedFormat, count: storedCount, metadata } = backupEntry;
 
-			// 创建备份数据结构
-			const backupData = {
-				timestamp: new Date().toISOString(),
-				version: '1.0',
-				count: secrets.length,
-				secrets: secrets,
-			};
-
-			// 生成备份文件名（按日期和时间戳）
-			const now = new Date();
-			const dateStr = now.toISOString().split('T')[0];
-			const timeStr = now.toISOString().split('T')[1].split('.')[0].replace(/:/g, '-');
-			const backupKey = `backup_${dateStr}_${timeStr}.json`;
-
-			// 🔒 加密备份数据（如果配置了 ENCRYPTION_KEY）
-			let backupContent;
-			let isEncrypted = false;
-
-			if (env.ENCRYPTION_KEY) {
-				// 加密整个备份对象
-				backupContent = await encryptData(backupData, env);
-				isEncrypted = true;
+			if (isEncrypted) {
 				logger.info('备份数据已加密', {
 					backupKey,
 					encrypted: true,
+					format: storedFormat,
 				});
 			} else {
-				// 向后兼容：如果没有配置加密密钥，仍然以明文保存
-				backupContent = JSON.stringify(backupData, null, 2);
 				logger.warn('备份数据以明文保存', {
 					backupKey,
 					reason: '未配置 ENCRYPTION_KEY',
+					format: storedFormat,
+				});
+			}
+			if (backupEntry.skippedInvalidCount > 0) {
+				logger.warn('自动备份已跳过无效密钥', {
+					backupKey,
+					skippedInvalidCount: backupEntry.skippedInvalidCount,
 				});
 			}
 
 			// 存储备份到KV
-			await env.SECRETS_KV.put(backupKey, backupContent);
+			await putBackupRecord(env, backupKey, backupContent, metadata);
 			timer.checkpoint('备份已保存');
+
+			// WebDAV 自动推送（使用 waitUntil 确保 Worker 不会在推送完成前退出）
+			ctx.waitUntil(pushToAllWebDAV(backupKey, backupContent, env));
+
+			// S3 自动推送
+			ctx.waitUntil(pushToAllS3(backupKey, backupContent, env));
+
+			// OneDrive 自动推送
+			ctx.waitUntil(pushToAllOneDrive(backupKey, backupContent, env));
+
+			// Google Drive 自动推送
+			ctx.waitUntil(pushToAllGoogleDrive(backupKey, backupContent, env));
 
 			logger.info('自动备份完成', {
 				backupKey,
-				secretCount: secrets.length,
+				secretCount: storedCount,
 				encrypted: isEncrypted,
+				format: storedFormat,
 			});
 
 			// 保存当前数据的哈希值
 			logger.debug('更新数据哈希值');
-			await saveDataHash(env, secrets);
+			await saveDataHash(env, secrets, {
+				reason: 'scheduled',
+				skippedInvalidCount: backupEntry.skippedInvalidCount,
+				backupStartedAt,
+			});
 			timer.checkpoint('哈希已更新');
 
-			// 清理旧备份（保留最新100个备份）
+			// 清理旧备份（根据用户设置保留数量）
 			logger.debug('清理旧备份文件');
 			await cleanupOldBackups(env);
 			timer.checkpoint('清理完成');
@@ -502,7 +512,7 @@ export default {
 			const duration = timer.end({
 				success: true,
 				backupKey,
-				secretCount: secrets.length,
+				secretCount: storedCount,
 			});
 
 			logger.info('定时备份任务执行完成', {

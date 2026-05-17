@@ -15,8 +15,35 @@ import {
 	handleGetBackups,
 	handleRestoreBackup,
 	handleExportBackup,
+	handleExportSecrets,
 } from '../api/secrets/index.js';
 import { handleFaviconProxy } from '../api/favicon.js';
+import {
+	handleGetWebDAVConfigs,
+	handleSaveWebDAVConfig,
+	handleTestWebDAV,
+	handleDeleteWebDAVConfig,
+	handleToggleWebDAV,
+} from '../api/webdav.js';
+import { handleGetS3Configs, handleSaveS3Config, handleTestS3, handleDeleteS3Config, handleToggleS3 } from '../api/s3.js';
+import {
+	handleDeleteOneDriveConfig,
+	handleGetOneDriveConfigs,
+	handleOneDriveOAuthCallback,
+	handleSaveOneDriveConfig,
+	handleStartOneDriveOAuth,
+	handleToggleOneDrive,
+} from '../api/onedrive.js';
+import {
+	handleDeleteGoogleDriveConfig,
+	handleGetGoogleDriveConfigs,
+	handleGoogleDriveOAuthCallback,
+	handleSaveGoogleDriveConfig,
+	handleStartGoogleDriveOAuth,
+	handleToggleGoogleDrive,
+} from '../api/gdrive.js';
+import { handleChangePassword } from '../api/password.js';
+import { handleGetSettings, handleSaveSettings } from '../api/settings.js';
 
 // UI 页面生成器
 import { createMainPage } from '../ui/page.js';
@@ -32,6 +59,7 @@ import {
 	requiresAuth,
 	createUnauthorizedResponse,
 	handleLogin,
+	handleLogout,
 	handleRefreshToken,
 	checkIfSetupRequired,
 	handleFirstTimeSetup,
@@ -43,9 +71,10 @@ import { getLogger } from '../utils/logger.js';
  * 处理HTTP请求的主要函数
  * @param {Request} request - HTTP请求对象
  * @param {Object} env - 环境变量对象，包含KV存储
+ * @param {Object} [ctx] - Cloudflare Workers 执行上下文
  * @returns {Response} HTTP响应
  */
-export async function handleRequest(request, env) {
+export async function handleRequest(request, env, ctx) {
 	const url = new URL(request.url);
 	const method = request.method;
 	const pathname = url.pathname;
@@ -131,10 +160,15 @@ export async function handleRequest(request, env) {
 
 			try {
 				const moduleCode = getModuleCode(moduleName);
+				// 生产启用长缓存（wrangler.toml 顶层 [vars] 默认 ENVIRONMENT=production）。
+				// 本地 hostname 兜底：即便用户跳过 `--env development` 直接跑 `wrangler dev`，
+				// localhost 场景也不应拿到长缓存，防止改代码时模块仍命中旧版本
+				const isLocalHost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '0.0.0.0';
+				const isProd = !isLocalHost && env?.ENVIRONMENT === 'production';
 				return new Response(moduleCode, {
 					headers: {
 						'Content-Type': 'application/javascript; charset=utf-8',
-						'Cache-Control': 'public, max-age=3600', // 缓存1小时
+						'Cache-Control': isProd ? 'public, max-age=3600' : 'no-cache, no-store, must-revalidate',
 						'Access-Control-Allow-Origin': '*',
 					},
 				});
@@ -149,6 +183,11 @@ export async function handleRequest(request, env) {
 			return await handleLogin(request, env);
 		}
 
+		// 退出登录路由
+		if (pathname === '/api/logout' && method === 'POST') {
+			return await handleLogout(request, env);
+		}
+
 		// Token 刷新路由
 		if (pathname === '/api/refresh-token' && method === 'POST') {
 			return await handleRefreshToken(request, env);
@@ -156,7 +195,7 @@ export async function handleRequest(request, env) {
 
 		// API路由处理
 		if (pathname.startsWith('/api/')) {
-			const response = await handleApiRequest(pathname, method, request, env);
+			const response = await handleApiRequest(pathname, method, request, env, ctx);
 
 			// 🔄 自动续期：如果 Token 剩余时间 < 7天，在响应头中添加标记
 			if (request.authDetails && request.authDetails.needsRefresh) {
@@ -208,16 +247,17 @@ export async function handleRequest(request, env) {
  * @param {string} method - HTTP方法
  * @param {Request} request - HTTP请求对象
  * @param {Object} env - 环境变量对象
+ * @param {Object} [ctx] - Cloudflare Workers 执行上下文
  * @returns {Response} HTTP响应
  */
-async function handleApiRequest(pathname, method, request, env) {
+async function handleApiRequest(pathname, method, request, env, ctx) {
 	// 密钥管理API
 	if (pathname === '/api/secrets') {
 		switch (method) {
 			case 'GET':
 				return handleGetSecrets(env);
 			case 'POST':
-				return handleAddSecret(request, env);
+				return handleAddSecret(request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}
@@ -226,12 +266,19 @@ async function handleApiRequest(pathname, method, request, env) {
 	// 批量导入API（必须在 /api/secrets/{id} 之前匹配）
 	if (pathname === '/api/secrets/batch') {
 		if (method === 'POST') {
-			return handleBatchAddSecrets(request, env);
+			return handleBatchAddSecrets(request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
 
 	// 单个密钥操作API
+	if (pathname === '/api/secrets/export') {
+		if (method === 'POST') {
+			return handleExportSecrets(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
 	if (pathname.startsWith('/api/secrets/')) {
 		const secretId = pathname.substring('/api/secrets/'.length);
 		if (!secretId) {
@@ -240,9 +287,9 @@ async function handleApiRequest(pathname, method, request, env) {
 
 		switch (method) {
 			case 'PUT':
-				return handleUpdateSecret(request, env);
+				return handleUpdateSecret(request, env, ctx);
 			case 'DELETE':
-				return handleDeleteSecret(request, env);
+				return handleDeleteSecret(request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}
@@ -252,9 +299,9 @@ async function handleApiRequest(pathname, method, request, env) {
 	if (pathname === '/api/backup') {
 		switch (method) {
 			case 'POST':
-				return handleBackupSecrets(request, env);
+				return handleBackupSecrets(request, env, ctx);
 			case 'GET':
-				return handleGetBackups(request, env);
+				return handleGetBackups(request, env, ctx);
 			default:
 				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 		}
@@ -263,7 +310,7 @@ async function handleApiRequest(pathname, method, request, env) {
 	// 恢复备份API
 	if (pathname === '/api/backup/restore') {
 		if (method === 'POST') {
-			return handleRestoreBackup(request, env);
+			return handleRestoreBackup(request, env, ctx);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
@@ -273,6 +320,142 @@ async function handleApiRequest(pathname, method, request, env) {
 		if (method === 'GET') {
 			const backupKey = pathname.replace('/api/backup/export/', '');
 			return handleExportBackup(request, env, backupKey);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// 修改密码 API
+	if (pathname === '/api/change-password') {
+		if (method === 'POST') {
+			return handleChangePassword(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// 系统设置 API
+	if (pathname === '/api/settings') {
+		switch (method) {
+			case 'GET':
+				return handleGetSettings(request, env);
+			case 'POST':
+				return handleSaveSettings(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+
+	// WebDAV 配置 API
+	if (pathname === '/api/webdav/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetWebDAVConfigs(request, env);
+			case 'POST':
+				return handleSaveWebDAVConfig(request, env);
+			case 'DELETE':
+				return handleDeleteWebDAVConfig(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/webdav/test') {
+		if (method === 'POST') {
+			return handleTestWebDAV(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/webdav/toggle') {
+		if (method === 'POST') {
+			return handleToggleWebDAV(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// S3 配置 API
+	if (pathname === '/api/s3/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetS3Configs(request, env);
+			case 'POST':
+				return handleSaveS3Config(request, env);
+			case 'DELETE':
+				return handleDeleteS3Config(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/s3/test') {
+		if (method === 'POST') {
+			return handleTestS3(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/s3/toggle') {
+		if (method === 'POST') {
+			return handleToggleS3(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// OneDrive 配置 API
+	if (pathname === '/api/onedrive/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetOneDriveConfigs(request, env);
+			case 'POST':
+				return handleSaveOneDriveConfig(request, env);
+			case 'DELETE':
+				return handleDeleteOneDriveConfig(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/onedrive/toggle') {
+		if (method === 'POST') {
+			return handleToggleOneDrive(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/onedrive/oauth/start') {
+		if (method === 'POST') {
+			return handleStartOneDriveOAuth(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/onedrive/oauth/callback') {
+		if (method === 'GET') {
+			return handleOneDriveOAuthCallback(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+
+	// Google Drive 配置 API
+	if (pathname === '/api/gdrive/config') {
+		switch (method) {
+			case 'GET':
+				return handleGetGoogleDriveConfigs(request, env);
+			case 'POST':
+				return handleSaveGoogleDriveConfig(request, env);
+			case 'DELETE':
+				return handleDeleteGoogleDriveConfig(request, env);
+			default:
+				return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+		}
+	}
+	if (pathname === '/api/gdrive/toggle') {
+		if (method === 'POST') {
+			return handleToggleGoogleDrive(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/gdrive/oauth/start') {
+		if (method === 'POST') {
+			return handleStartGoogleDriveOAuth(request, env);
+		}
+		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
+	}
+	if (pathname === '/api/gdrive/oauth/callback') {
+		if (method === 'GET') {
+			return handleGoogleDriveOAuthCallback(request, env);
 		}
 		return createErrorResponse('方法不允许', `不支持的HTTP方法: ${method}`, 405, request);
 	}
